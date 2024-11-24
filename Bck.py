@@ -40,7 +40,7 @@ class BckKey:
 
 
 class BckJointAnim:
-    def __init__(self): 
+    def __init__(self):
         self.scalesX = []
         self.rotationsY = []
         self.rotationsZ = []
@@ -71,7 +71,7 @@ class BckJointAnim:
 
 class BckAnk1Header:
 
-    def LoadData(self, br):                
+    def LoadData(self, br):
       self.tag = br.ReadFixedLengthString(4)  # "ANK1"
       self.sizeOfSection = br.ReadDWORD()
       self.loopFlags = LoopType(br.GetByte())
@@ -110,7 +110,7 @@ class BckAnimIndex:
         self.index = br.GetSHORT()
         self.double_tangent = br.GetSHORT()  # note: are there other values than 0 or 1?
         if self.double_tangent not in (0,1):
-            log.warning("BckAnimIndex: unknown value of `double_tangent`: {:d}", self.double_tangent)            
+            log.warning("BckAnimIndex: unknown value of `double_tangent`: {:d}", self.double_tangent)
 
     def DumpData(self, bw):
         bw.writeShort(self.count)
@@ -133,7 +133,7 @@ class BckAnimComponent:
      self.s.DumpData(bw)
      self.r.DumpData(bw)
      self.t.DumpData(bw)
-  
+
 
 class BckAnimatedJoint:
     # --if count > 1, count*3 floats/shorts stored at index (time, value, unk [interpolation info, e.g. tangent??])?
@@ -214,7 +214,7 @@ class Bck_in:
             return
 
         self.loopType = h.loopFlags
-           
+
         self.currAnimTime = 0.0
         self.animationLength = h.animationLength
 
@@ -312,14 +312,14 @@ class Bck_out:
     def dump_action(self, action, pose):
         self.loopType = LoopType[getattr(action, "bck_loop_type", 0)]
         self.maxframe = int(action.frame_range[1] - action.frame_range[0])
-        
+
         z_to_y_mtx = mathutils.Matrix.Rotation(radians(-90.), 4, mathutils.Vector((1., 0., 0.)))
-        
+
         for b in pose.bones:
             print(b.name)
-            
+
             parent_mtx = mathutils.Matrix.Identity(4)
-            
+
             if b.bone.parent is not None:
                 parent_mtx = b.bone.parent.matrix_local
 
@@ -328,10 +328,10 @@ class Bck_out:
             else:
                 local_matrix = z_to_y_mtx @ parent_mtx.inverted() @ b.bone.matrix_local @ z_to_y_mtx.inverted()
             local_rotation = local_matrix.to_quaternion()
-            
+
             joint_anim = BckJointAnim()
             fcurve_path = 'pose.bones["{0}"]'.format(b.name)
-            
+
             trans_fcurves = [fcu for fcu in action.fcurves if fcu.data_path.startswith(fcurve_path + ".location")]
             rot_fcurves = [fcu for fcu in action.fcurves if fcu.data_path.startswith(fcurve_path + ".rotation_euler")]
             scale_fcurves = [fcu for fcu in action.fcurves if fcu.data_path.startswith(fcurve_path + ".scale")]
@@ -340,22 +340,22 @@ class Bck_out:
               self.process_translation_track(trans_fcurves, f, joint_anim, local_rotation, local_matrix)
               self.process_rotation_track(rot_fcurves, f, joint_anim, local_rotation)
               self.process_scale_track(scale_fcurves, f, joint_anim)
-                    
+
             self.anims.append(joint_anim)
-    
+
     def get_key_value(self, curve, frame):
         keyframe = next((k for k in curve.keyframe_points if k.co[0] == frame), None)
-        
+
         if keyframe is not None:
             return (keyframe.co, keyframe.handle_left, keyframe.handle_right)
-            
+
         return (None, None, None)
-    
+
     def get_track_keyframe(self, x_curve, y_curve, z_curve, frame, is_scale=False):
         (x_co, x_handle_left, x_handle_right) = self.get_key_value(x_curve, frame)
         (y_co, y_handle_left, y_handle_right) = self.get_key_value(y_curve, frame)
         (z_co, z_handle_left, z_handle_right) = self.get_key_value(z_curve, frame)
-        
+
         if x_co is not None and y_co is not None and z_co is not None:
             if abs(x_co[0]-x_handle_left[0])<1E-2:
                 x_tangent_left = 0  # note: we do not support "infinite" tangents at keyframes
@@ -402,14 +402,14 @@ class Bck_out:
             keyframe_value = None
             tangent_left = None
             tangent_right = None
-        
+
         return (keyframe_value, tangent_left, tangent_right)
-    
+
     def process_translation_track(self, curves, frame, anim, local_rotation, local_matrix):
         x_track = None
         y_track = None
         z_track = None
-        
+
         for f in curves:
             if f.array_index == 0:
                 x_track = f
@@ -420,47 +420,47 @@ class Bck_out:
             else:
                 print('Unknown fcurve array index "{0}"!'.format(f.array_index))
                 return
-        
+
         value, handle_left, handle_right = self.get_track_keyframe(x_track, y_track, z_track, frame)
         if value is None:
             return
-        
+
         value = local_matrix @ mathutils.Vector(value)
         handle_left = local_rotation @ mathutils.Vector(handle_left)
         handle_right = local_rotation @ mathutils.Vector(handle_right)
-        
+
         x_bck_key = BckKey()
         x_bck_key.time = frame
         x_bck_key.tangentL = handle_left[0]
         x_bck_key.tangentR = handle_right[0]
         x_bck_key.value = value[0]
         anim.translationsX.append(x_bck_key)
-        
+
         y_bck_key = BckKey()
         y_bck_key.time = frame
         y_bck_key.tangentL = handle_left[1]
         y_bck_key.tangentR = handle_right[1]
         y_bck_key.value = value[1]
         anim.translationsY.append(y_bck_key)
-        
+
         z_bck_key = BckKey()
         z_bck_key.time = frame
         z_bck_key.tangentL = handle_left[2]
         z_bck_key.tangentR = handle_right[2]
         z_bck_key.value = value[2]
         anim.translationsZ.append(z_bck_key)
-        
+
         # Keeping one of the original loops for reference
         #for k in x_track.keyframe_points:
         #    bck_key = BckKey()
-        #    
+        #
         #    bck_key.time = k.co[0]
         #    bck_key.tangentL = (k.handle_left[1] * EPSILON) + k.co[1]
         #    bck_key.tangentR = (k.handle_right[1] * EPSILON) + k.co[1]
-        #    
+        #
         #    vec = mathutils.Vector((k.co[1], 0., 0.))
         #    vec = local_matrix @ vec
-        #    
+        #
         #    bck_key.value = vec[0]
         #    anim.translationsX.append(bck_key)
 
@@ -469,14 +469,14 @@ class Bck_out:
             value -= 2.0 * pi
         elif isclose(value, -1.0 * pi, rel_tol=0.001):
             value += 2.0 * pi
-            
+
         return value
-    
+
     def process_rotation_track(self, curves, frame, anim, local_rotation):
         x_track = None
         y_track = None
         z_track = None
-        
+
         for f in curves:
             if f.array_index == 0:
                 x_track = f
@@ -487,61 +487,61 @@ class Bck_out:
             else:
                 print('Unknown fcurve array index "{0}"!'.format(f.array_index))
                 return
-        
+
         value, handle_left, handle_right = self.get_track_keyframe(x_track, y_track, z_track, frame)
         if value is None:
             return
-        
+
         rot_euler = mathutils.Euler(value, 'XYZ')
         handL_euler = mathutils.Euler(handle_left, 'XYZ')
         handR_euler = mathutils.Euler(handle_right, 'XYZ')
         rot_euler.rotate(local_rotation)
         handL_euler.rotate(local_rotation)
         handR_euler.rotate(local_rotation)
-        
+
         print(rot_euler)
-        
+
         x_bck_key = BckKey()
         x_bck_key.time = frame
         x_bck_key.tangentL = handL_euler[0]
         x_bck_key.tangentR = handR_euler[0]
         x_bck_key.value = self.correct_rotation(rot_euler[0])
         anim.rotationsX.append(x_bck_key)
-        
+
         y_bck_key = BckKey()
         y_bck_key.time = frame
         y_bck_key.tangentL = handL_euler[1]
         y_bck_key.tangentR = handR_euler[1]
         y_bck_key.value = self.correct_rotation(rot_euler[1])
         anim.rotationsY.append(y_bck_key)
-        
+
         z_bck_key = BckKey()
         z_bck_key.time = frame
         z_bck_key.tangentL = handL_euler[2]
         z_bck_key.tangentR = handR_euler[2]
         z_bck_key.value = self.correct_rotation(rot_euler[2])
         anim.rotationsZ.append(z_bck_key)
-        
+
         # Keeping one of the original loops for reference
         #for k in x_track.keyframe_points:
         #    bck_key = BckKey()
-        #    
+        #
         #    bck_key.time = k.co[0]
         #    bck_key.tangentL = (k.handle_left[1] * EPSILON) + k.co[1]
         #    bck_key.tangentR = (k.handle_right[1] * EPSILON) + k.co[1]
-        #    
+        #
         #    euler = mathutils.Euler((k.co[1], 0., 0.), 'XYZ')
         #    euler.rotate(local_matrix.to_quaternion())
-        #    
+        #
         #    print('x rot: {0} '.format(euler[0]))
         #    bck_key.value = euler[0]
         #    anim.rotationsX.append(bck_key)
-        
+
     def process_scale_track(self, curves, frame, anim):
         x_track = None
         y_track = None
         z_track = None
-        
+
         for f in curves:
             if f.array_index == 0:
                 x_track = f
@@ -552,43 +552,43 @@ class Bck_out:
             else:
                 print('Unknown fcurve array index "{0}"!'.format(f.array_index))
                 return
-        
+
         value, handle_left, handle_right = self.get_track_keyframe(x_track, y_track, z_track, frame, is_scale=True)
         if value is None:
             return
-        
+
         scale_vec = mathutils.Vector((value[0], value[2], value[1]))
-        
+
         x_bck_key = BckKey()
         x_bck_key.time = frame
         x_bck_key.tangentL = handle_left[0]
         x_bck_key.tangentR = handle_right[0]
         x_bck_key.value = scale_vec[0]
         anim.scalesX.append(x_bck_key)
-        
+
         y_bck_key = BckKey()
         y_bck_key.time = frame
         y_bck_key.tangentL = handle_left[1]
         y_bck_key.tangentR = handle_right[1]
         y_bck_key.value = scale_vec[1]
         anim.scalesY.append(y_bck_key)
-        
+
         z_bck_key = BckKey()
         z_bck_key.time = frame
         z_bck_key.tangentL = handle_left[2]
         z_bck_key.tangentR = handle_right[2]
         z_bck_key.value = scale_vec[2]
         anim.scalesZ.append(z_bck_key)
-                
+
         #for k in x_track.keyframe_points:
         #    bck_key = BckKey()
-        #    
+        #
         #    bck_key.time = k.co[0]
         #    bck_key.tangentL = (k.handle_left[1] * EPSILON) + k.co[1]
         #    bck_key.tangentR = (k.handle_right[1] * EPSILON) + k.co[1]
-        #    
+        #
         #    vec = mathutils.Vector((k.co[1], 0., 0.))
-        #    
+        #
         #    bck_key.value = 1. #vec[0]
         #    anim.scalesX.append(bck_key)
 
@@ -688,33 +688,33 @@ class Bck_out:
     def dump_bck(self, filePath):
         bw = BinaryWriter()
         bw.Open(filePath)
-        
+
         # File version info
         bw.writeString("J3D1bck1")
-        
+
         # Placeholder for file size
         bw.writeDword(0x00)
-        
+
         # Number of sections, only 1 here (ANK1)
         bw.writeDword(0x01)
-        
+
         blemd_watermark = "BleMD"
         # The next 0xC bytes of the header are not used, so we can put a watermark here.
         bw.writeString(blemd_watermark)
         for _ in range(0x0C - len(blemd_watermark)):
             bw.writeByte(0xFF)
-        
+
         # The last 4 bytes of the header CAN be used for sound effects, but that's not supported right now.
         bw.writeDword(0xFFFFFFFF)
-        
+
         self.dump_ank1(bw)
-        
+
         file_size = bw.Position()
-        
+
         # Set file size field
         bw.SeekSet(0x08)
         bw.writeDword(file_size)
-        
+
         bw.Close()
 
 

@@ -38,6 +38,12 @@ def sum2(vct1, vct2):
     ret.z += vct2.z
     return ret
 
+def recenter(vct):
+    ret = vct.copy()
+    ret.x = (ret.x+math.pi)%(2*math.pi)-math.pi
+    ret.y = (ret.y+math.pi)%(2*math.pi)-math.pi
+    ret.z = (ret.z+math.pi)%(2*math.pi)-math.pi
+    return ret
 
 def subtract2(vct1, vct2):
     ret = vct1.copy()
@@ -93,12 +99,26 @@ def cubic_interpolator(t1, y1, d1, t2, y2, d2, t):
 # this (each contains translation and rotation):
 # origin_s*origin_d*bone_1_s*bone_1_d*....*bone_n_s*bone_n_d
 
+
+def min_dist_rule(y, y_ref):
+    # part 1: there are two ways to represent the same rotation, even with all three angles in ]-180°, 180°]
+    # see which one fits us best.
+    y2 = Euler((math.pi+y.x, math.pi-y.y, math.pi+y.z),'XYZ')
+    dist1 = recenter(Vector(y_ref)-Vector(y)).magnitude
+    dist2 = recenter(Vector(y_ref)-Vector(y2)).magnitude
+    if dist1 > dist2:
+        y = y2
+
+    # part 2: all angles can be shifted by 360° both ways, several times
+    y = sum2(recenter(subtract2(y,y_ref)),y_ref)
+    return y
+
 def robust_rotation(p_bone, y, ydL, ydR):
     #unrot_y =y.copy()
     y.rotate(p_bone.inverted_static_rotquat)
     ydL.rotate(p_bone.inverted_static_rotquat)
     ydR.rotate(p_bone.inverted_static_rotquat)
-    
+
     if common.GLOBALS.enforce_smallest_movement:
         # we assume get_rot_vct Is called in order with regards to the keyframes,
         # so, to enforce the 'smallest motion' rule, we only have to cache the previous keyframe
@@ -111,13 +131,11 @@ def robust_rotation(p_bone, y, ydL, ydR):
             p_bone.prev_rotation_cache = y.copy()
             return y, ydL, ydR
         prev_y = p_bone.prev_rotation_cache
-        y2 = Euler((math.pi+y.x, math.pi-y.y, math.pi+y.z),'XYZ')
-        dist1 = (Vector(prev_y)-Vector(y)).magnitude
-        dist2 = (Vector(prev_y)-Vector(y2)).magnitude
-        if dist1 > dist2:
-            y = y2
-            ydR = Euler((math.pi+ydL.x, math.pi-ydL.y, math.pi+ydL.z),'XYZ')
-            ydL = Euler((math.pi+ydR.x, math.pi-ydR.y, math.pi+ydR.z),'XYZ')
+
+        y = min_dist_rule(y, prev_y)
+        ydL = min_dist_rule(ydL, y)
+        ydR = min_dist_rule(ydR, y)
+
         p_bone.prev_rotation_cache = y.copy()
     return y, ydL, ydR
 
@@ -222,7 +240,6 @@ class KeyFrames:
         #         tL = lh_distances[frame_i]
         #         tR = rh_distances[frame_i]
         #         dest_collection[time] = (y,dL,dR, tL,tR)
-            
 
     @staticmethod
     def _get_vt(data, time):
